@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<body style="margin:0;overflow:hidden;background:black;">
+
+<canvas id="game" width="900" height="450"></canvas>
+
+<script>
+
+let canvas = document.getElementById("game")
+let ctx = canvas.getContext("2d")
+
+// sound
+let audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+
+function beep(freq){
+let osc = audioCtx.createOscillator()
+let gain = audioCtx.createGain()
+
+osc.frequency.value = freq
+osc.type = "square"
+
+osc.connect(gain)
+gain.connect(audioCtx.destination)
+
+osc.start()
+
+gain.gain.setValueAtTime(0.2,audioCtx.currentTime)
+gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.15)
+
+osc.stop(audioCtx.currentTime+0.15)
+}
+
+// mouse control
+let mouseY = 200
+
+document.addEventListener("mousemove", e=>{
+let rect = canvas.getBoundingClientRect()
+mouseY = e.clientY - rect.top
+})
+
+// paddles
+let player={x:20,y:180,w:15,h:90}
+let cpu={x:865,y:180,w:15,h:90}
+
+// faster ball (more arcade feel)
+let ball={x:450,y:225,vx:7,vy:5,size:12}
+
+// score system
+let score=0
+let highScore = localStorage.getItem("pongHighScore") || 0
+let gameOver=false
+
+function resetGame(){
+ball.x=450
+ball.y=225
+ball.vx=7
+ball.vy=5
+score=0
+gameOver=false
+}
+
+canvas.addEventListener("click",()=>{
+if(gameOver) resetGame()
+})
+
+// retro 80s pixel brick wall
+function drawBrickBackground(){
+
+let brickW = 40
+let brickH = 20
+
+for(let y=0; y<450; y+=brickH){
+
+    let offset = (y/brickH % 2) * (brickW/2) // staggered bricks
+
+    for(let x=-brickW; x<900; x+=brickW){
+
+        // bright retro brick colors
+        ctx.fillStyle="#b22222"  // purple 80s neon tone
+        ctx.fillRect(x+offset,y,brickW,brickH)
+
+        ctx.strokeStyle="#5a1a1a" // neon mortar
+        ctx.lineWidth = 2
+        ctx.strokeRect(x+offset,y,brickW,brickH)
+
+    }
+
+}
+
+}
+
+function game(){
+
+ctx.clearRect(0,0,900,450)
+
+// draw retro brick wall
+ drawBrickBackground()
+
+// player paddle
+player.y = mouseY - player.h/2
+
+// CPU AI with 35% close miss chance
+let target = ball.y - cpu.h/2
+
+if(ball.vx > 0){
+
+    if(Math.random() < 0.35){
+        target += (Math.random()*140 - 70)
+    }
+
+}
+
+cpu.y += (target - cpu.y) * 0.18
+
+if(!gameOver){
+
+// move ball
+ball.x += ball.vx
+ball.y += ball.vy
+
+// wall bounce
+if(ball.y < 0 || ball.y > 450){
+ball.vy *= -1
+beep(500)
+}
+
+// player hit
+if(ball.x < player.x + player.w &&
+ball.y > player.y &&
+ball.y < player.y + player.h){
+
+ball.vx = Math.abs(ball.vx)
+score++
+beep(700)
+
+}
+
+// cpu hit
+if(ball.x + ball.size > cpu.x &&
+ball.y > cpu.y &&
+ball.y < cpu.y + cpu.h){
+
+ball.vx = -Math.abs(ball.vx)
+score++
+beep(700)
+
+}
+
+// miss = GAME OVER
+if(ball.x < 0 || ball.x > 900){
+beep(200)
+
+gameOver=true
+
+if(score > highScore){
+highScore = score
+localStorage.setItem("pongHighScore",highScore)
+}
+}
+
+}
+
+// draw paddles
+ctx.fillStyle="white"
+ctx.fillRect(player.x,player.y,player.w,player.h)
+ctx.fillRect(cpu.x,cpu.y,cpu.w,cpu.h)
+
+// draw ball
+ctx.fillRect(ball.x,ball.y,ball.size,ball.size)
+
+// score text
+ctx.font="24px Arial"
+ctx.fillStyle="white"
+ctx.fillText("Hits: "+score,20,30)
+ctx.fillText("High Score: "+highScore,700,30)
+
+// game over screen
+if(gameOver){
+ctx.font="60px Arial"
+ctx.fillText("GAME OVER",300,220)
+
+ctx.font="24px Arial"
+ctx.fillText("Click to Restart",360,260)
+}
+
+requestAnimationFrame(game)
+
+}
+
+game()
+
+</script>
+
+</body>
+</html>
