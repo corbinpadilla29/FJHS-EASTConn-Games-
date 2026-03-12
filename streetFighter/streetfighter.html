@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Cardinal Fury</title>
+
+<style>
+body{
+margin:0;
+background:#222;
+}
+
+canvas{
+display:block;
+margin:auto;
+background:#87c9ff;
+border:4px solid black;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="game" width="900" height="500"></canvas>
+
+<script>
+
+const canvas=document.getElementById("game")
+const ctx=canvas.getContext("2d")
+
+ctx.font="16px Arial"
+
+let level=1
+let upgrades=0
+let highScore=localStorage.getItem("cardinalHighScore")||0
+let gameOver=false
+
+let keys={}
+let blasts=[]
+let inputBuffer=[]
+
+/* PLAYER */
+
+let player={
+x:200,
+y:420,
+health:50,
+maxHealth:50,
+attack:null,
+frame:0,
+hitDone:false,
+vx:0,
+stun:0,
+dir:1
+}
+
+/* ENEMY */
+
+let enemy={
+x:700,
+y:420,
+health:50,
+maxHealth:50,
+vx:0,
+stun:0,
+boss:false,
+attack:null,
+frame:0,
+blocking:false,
+blockFlash:0,
+comboHits:0,
+comboTimer:0,
+dir:-1
+}
+
+/* INPUT */
+
+document.addEventListener("keydown",e=>{
+
+if(gameOver && e.key.toLowerCase()==="r"){
+location.reload()
+}
+
+keys[e.key]=true
+
+if(e.key==="ArrowUp"){
+inputBuffer.push("up")
+normalPunch()
+}
+
+if(e.key==="ArrowDown"){
+inputBuffer.push("down")
+normalKick()
+}
+
+if(e.key==="ArrowRight") inputBuffer.push("right")
+
+if(inputBuffer.length>6) inputBuffer.shift()
+
+checkCombos()
+
+})
+
+document.addEventListener("keyup",e=>{
+keys[e.key]=false
+})
+
+/* BASIC ATTACKS */
+
+function normalPunch(){
+if(player.attack) return
+player.attack="punch"
+player.frame=0
+player.hitDone=false
+}
+
+function normalKick(){
+if(player.attack) return
+player.attack="kick"
+player.frame=0
+player.hitDone=false
+}
+
+/* COMBOS */
+
+function checkCombos(){
+
+let combo=inputBuffer.join(",")
+
+if(combo.endsWith("up,up,up")){
+player.attack="triple"
+player.frame=0
+player.hitDone=false
+inputBuffer=[]
+}
+
+else if(combo.endsWith("down,down")){
+player.attack="spinkick"
+player.frame=0
+player.hitDone=false
+inputBuffer=[]
+}
+
+else if(combo.endsWith("right,right")){
+player.attack="dash"
+player.frame=0
+player.hitDone=false
+inputBuffer=[]
+}
+
+else if(combo.endsWith("up,down,up")){
+player.attack="fury"
+spawnBlast()
+player.frame=0
+inputBuffer=[]
+}
+
+}
+
+/* PROJECTILE */
+
+function spawnBlast(){
+
+blasts.push({
+x:player.x+(player.dir*50),
+y:player.y-70,
+vx:10*player.dir,
+life:60
+})
+
+}
+
+/* ENEMY AI */
+
+function enemyAI(){
+
+if(enemy.stun>0){
+enemy.stun--
+return
+}
+
+let dist=player.x-enemy.x
+
+enemy.dir = dist>0 ? 1 : -1
+
+if(enemy.attack){
+enemy.frame++
+if(enemy.frame>15){
+enemy.attack=null
+enemy.frame=0
+}
+return
+}
+
+if(Math.abs(dist)<70 && Math.random()<0.02){
+enemy.attack="punch"
+enemy.frame=0
+}
+
+if(Math.abs(dist)>90){
+enemy.vx += dist>0 ? 1.5 : -1.5
+}
+
+}
+
+/* RIPOSTE */
+
+function riposte(){
+
+player.health-=12
+player.vx=-10*Math.sign(enemy.x-player.x)
+player.stun=20
+
+enemy.comboHits=0
+enemy.comboTimer=0
+
+enemy.blockFlash=12
+enemy.blocking=true
+
+setTimeout(()=>enemy.blocking=false,400)
+
+}
+
+/* DAMAGE */
+
+function checkHits(){
+
+if(enemy.comboTimer>0) enemy.comboTimer--
+else enemy.comboHits=0
+
+/* PLAYER HITS ENEMY */
+
+if(player.attack && !player.hitDone){
+
+if(player.frame>4 && player.frame<10){
+
+let dist=enemy.x-player.x
+
+if(Math.abs(dist)<70 && Math.sign(dist)===player.dir){
+
+let dmg=10
+
+if(enemy.blocking){
+dmg=4
+enemy.vx=14*Math.sign(dist)
+}else{
+enemy.vx=8*Math.sign(dist)
+}
+
+enemy.health-=dmg
+enemy.stun=20
+
+enemy.comboHits++
+enemy.comboTimer=60
+
+if(enemy.comboHits>=3){
+riposte()
+}
+
+player.hitDone=true
+
+}
+
+}
+
+}
+
+/* ENEMY HITS PLAYER */
+
+if(enemy.attack==="punch"){
+
+let dist = player.x - enemy.x
+
+if(Math.abs(dist) < 65){
+
+player.health -= 4
+player.vx = -8 * Math.sign(dist)
+player.stun = 20
+
+enemy.attack = null
+
+}
+
+}
+
+}
+
+/* COURTYARD */
+
+function drawCourtyard(){
+
+ctx.fillStyle="#5fa85f"
+ctx.fillRect(0,440,900,60)
+
+for(let i=0;i<upgrades;i++){
+
+if(i===0){
+ctx.fillStyle="gold"
+ctx.fillRect(100,390,30,50)
+}
+
+if(i===1){
+ctx.fillStyle="#555"
+ctx.fillRect(250,410,80,10)
+ctx.fillRect(250,400,10,10)
+ctx.fillRect(320,400,10,10)
+}
+
+if(i===2){
+ctx.fillStyle="white"
+ctx.fillRect(450,360,10,80)
+ctx.fillRect(450,360,60,10)
+
+ctx.fillStyle="orange"
+ctx.beginPath()
+ctx.arc(520,370,12,0,Math.PI*2)
+ctx.fill()
+}
+
+if(i===3){
+ctx.fillStyle="#8b5a2b"
+ctx.fillRect(650,405,90,10)
+ctx.fillRect(650,395,10,10)
+ctx.fillRect(730,395,10,10)
+}
+
+}
+
+}
+
+/* PLAYER */
+
+function drawCardinal(){
+
+ctx.save()
+ctx.translate(player.x,player.y)
+ctx.scale(player.dir,1)
+
+let bounce=Math.sin(Date.now()*0.01)*3
+ctx.translate(0,bounce)
+
+if(player.attack==="spinkick")
+ctx.rotate(player.frame*0.35)
+
+if(player.attack==="dash")
+ctx.translate(player.frame*5,0)
+
+ctx.fillStyle="#cc0000"
+
+ctx.beginPath()
+ctx.moveTo(-20,-60)
+ctx.lineTo(20,-60)
+ctx.lineTo(28,-10)
+ctx.lineTo(-28,-10)
+ctx.fill()
+
+ctx.fillStyle="#ff3333"
+ctx.fillRect(-12,-55,24,25)
+
+ctx.fillStyle="#cc0000"
+ctx.beginPath()
+ctx.arc(0,-85,22,0,Math.PI*2)
+ctx.fill()
+
+ctx.fillStyle="#990000"
+ctx.beginPath()
+ctx.moveTo(-10,-100)
+ctx.lineTo(0,-125)
+ctx.lineTo(10,-100)
+ctx.fill()
+
+ctx.fillStyle="orange"
+ctx.beginPath()
+ctx.moveTo(20,-85)
+ctx.lineTo(45,-78)
+ctx.lineTo(20,-70)
+ctx.fill()
+
+ctx.fillStyle="white"
+ctx.beginPath()
+ctx.arc(6,-88,5,0,Math.PI*2)
+ctx.fill()
+
+ctx.fillStyle="black"
+ctx.beginPath()
+ctx.arc(7,-88,2,0,Math.PI*2)
+ctx.fill()
+
+ctx.fillStyle="#990000"
+
+if(player.attack==="punch"){
+ctx.fillRect(25,-45,35,10)
+}
+else if(player.attack==="kick"){
+ctx.fillRect(15,-15,45,10)
+}
+else if(player.attack==="triple"){
+ctx.fillRect(25,-50,40,10)
+ctx.fillRect(25,-35,40,10)
+ctx.fillRect(25,-20,40,10)
+}
+else{
+ctx.beginPath()
+ctx.ellipse(-38,-40,18,8,0,0,Math.PI*2)
+ctx.fill()
+
+ctx.beginPath()
+ctx.ellipse(38,-40,18,8,0,0,Math.PI*2)
+ctx.fill()
+}
+
+ctx.fillStyle="#111"
+ctx.fillRect(-12,-10,10,25)
+ctx.fillRect(2,-10,10,25)
+
+ctx.restore()
+
+}
+
+/* ENEMY */
+
+function drawEnemy(){
+
+ctx.save()
+ctx.translate(enemy.x,enemy.y)
+ctx.scale(enemy.dir,1)
+
+if(enemy.blockFlash>0){
+enemy.blockFlash--
+ctx.fillStyle="purple"
+ctx.fillRect(-25,-70,50,70)
+}
+else if(enemy.attack==="punch"){
+ctx.fillStyle="darkred"
+ctx.fillRect(-25,-70,50,70)
+ctx.fillRect(25,-40,30,10)
+}
+else{
+ctx.fillStyle="blue"
+ctx.fillRect(-20,-60,40,60)
+}
+
+ctx.restore()
+
+}
+
+/* BLASTS */
+
+function updateBlasts(){
+
+for(let i=blasts.length-1;i>=0;i--){
+
+let b=blasts[i]
+
+b.x+=b.vx
+b.life--
+
+ctx.fillStyle="yellow"
+ctx.beginPath()
+ctx.arc(b.x,b.y,10,0,Math.PI*2)
+ctx.fill()
+
+if(Math.abs(b.x-enemy.x)<30){
+
+enemy.health-=15
+enemy.stun=25
+enemy.vx=10
+
+blasts.splice(i,1)
+continue
+
+}
+
+if(b.life<=0) blasts.splice(i,1)
+
+}
+
+}
+
+/* UI */
+
+function drawUI(){
+
+ctx.fillStyle="red"
+ctx.fillRect(20,20,200,20)
+
+ctx.fillStyle="lime"
+ctx.fillRect(20,20,200*(player.health/player.maxHealth),20)
+
+ctx.fillStyle="red"
+ctx.fillRect(680,20,200,20)
+
+ctx.fillStyle="lime"
+ctx.fillRect(680,20,200*(enemy.health/enemy.maxHealth),20)
+
+ctx.fillStyle="black"
+
+ctx.fillText("Level: "+level,420,15)
+ctx.fillText("High Score: "+highScore,390,35)
+
+}
+
+/* GAME OVER */
+
+function drawGameOver(){
+
+ctx.fillStyle="rgba(0,0,0,0.75)"
+ctx.fillRect(0,0,900,500)
+
+ctx.fillStyle="white"
+ctx.textAlign="center"
+
+ctx.font="48px Arial"
+ctx.fillText("GAME OVER",450,150)
+
+ctx.font="22px Arial"
+ctx.fillText("Level Reached: "+level,450,210)
+ctx.fillText("High Score: "+highScore,450,240)
+
+ctx.font="20px Arial"
+ctx.fillText("Press R to Restart",450,280)
+
+ctx.font="20px Arial"
+ctx.fillText("Controls",450,330)
+
+ctx.font="16px Arial"
+ctx.fillText("Arrow Left / Right — Move",450,360)
+ctx.fillText("Arrow Up — Punch",450,380)
+ctx.fillText("Arrow Down — Kick",450,400)
+
+ctx.fillText("Combos:",450,430)
+ctx.fillText("Up Up Up — Triple Strike",450,450)
+ctx.fillText("Down Down — Spin Kick",450,470)
+ctx.fillText("Right Right — Dash",450,490)
+
+ctx.textAlign="left"
+
+}
+
+/* GAME LOOP */
+
+function update(){
+
+ctx.clearRect(0,0,900,500)
+
+drawCourtyard()
+
+if(keys["ArrowLeft"]){
+player.x-=4
+player.dir=-1
+}
+
+if(keys["ArrowRight"]){
+player.x+=4
+player.dir=1
+}
+
+player.x=Math.max(50,Math.min(850,player.x))
+
+enemyAI()
+
+player.x+=player.vx
+enemy.x+=enemy.vx
+
+player.vx*=0.8
+enemy.vx*=0.8
+
+checkHits()
+
+drawCardinal()
+drawEnemy()
+
+updateBlasts()
+
+drawUI()
+
+if(player.attack){
+
+player.frame++
+
+if(player.frame>15){
+player.attack=null
+player.frame=0
+player.hitDone=false
+}
+
+}
+
+if(enemy.health<=0){
+
+level++
+upgrades++
+
+if(level>highScore){
+highScore=level
+localStorage.setItem("cardinalHighScore",highScore)
+}
+
+enemy.health=50+level*5
+enemy.maxHealth=enemy.health
+enemy.x=700
+enemy.comboHits=0
+
+}
+
+if(player.health<=0){
+gameOver=true
+}
+
+if(gameOver){
+drawGameOver()
+return
+}
+
+requestAnimationFrame(update)
+
+}
+
+update()
+
+</script>
+
+</body>
+</html>
