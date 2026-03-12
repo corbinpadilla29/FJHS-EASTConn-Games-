@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>FJHS Cardinal Run</title>
+<style>
+body {
+    margin: 0;
+    overflow: hidden;
+    background: skyblue;
+    font-family: Arial, sans-serif;
+}
+canvas { display: block; }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let gravity = 0.7;
+let keys = {};
+let score = 0;
+let highScore = localStorage.getItem("fjhsHighScore") || 0;
+let lives = 3;
+let nextLifeScore = 1000;
+
+let cameraX = 0;
+let scrollSpeed = 2;
+let baseSpeed = 2;
+let gameOver = false;
+let isRespawning = false;
+
+const player = {
+    x: 200,
+    y: 300,
+    width: 60,
+    height: 70,
+    velX: 0,
+    velY: 0,
+    speed: 5,
+    jumpPower: 15,
+    grounded: false
+};
+
+let platforms = [];
+let shirts = [];
+
+function createPlatform(x, y, width) {
+    platforms.push({x, y, width, height: 20});
+}
+
+function createShirt(x, y) {
+    shirts.push({x, y, width: 40, height: 40, collected: false});
+}
+
+createPlatform(0, 400, 2000);
+
+function generatePlatforms() {
+    let last = platforms[platforms.length - 1];
+
+    while (last.x + last.width < cameraX + canvas.width + 200) {
+
+        // Difficulty scales with score
+        let difficulty = Math.min(score / 2000, 1);
+
+        let gap = 60 + Math.random() * (120 + 200 * difficulty);
+        let width = 200 - (120 * difficulty) + Math.random() * 100;
+        let height = 250 + Math.random() * (150 + 150 * difficulty);
+
+        let newX = last.x + last.width + gap;
+
+        createPlatform(newX, height, Math.max(width, 80));
+
+        if (Math.random() > 0.2) {
+            createShirt(newX + width/2 - 20, height - 70);
+        }
+
+        last = platforms[platforms.length - 1];
+    }
+}
+
+document.addEventListener("keydown", e => {
+    keys[e.code] = true;
+    if (gameOver && e.code === "Enter") restartGame();
+});
+document.addEventListener("keyup", e => keys[e.code] = false);
+
+function update() {
+
+    if (gameOver) return;
+
+    if (!isRespawning) {
+        let difficulty = Math.min(score / 3000, 1);
+        scrollSpeed = baseSpeed + difficulty * 6;
+    }
+
+    if (keys["ArrowRight"]) player.velX = player.speed;
+    else if (keys["ArrowLeft"]) player.velX = -player.speed;
+    else player.velX = 0;
+
+    if (keys["Space"] && player.grounded) {
+        player.velY = -player.jumpPower;
+        player.grounded = false;
+    }
+
+    player.velY += gravity;
+
+    if (!isRespawning)
+        player.x += player.velX + scrollSpeed;
+    else
+        player.x += player.velX;
+
+    player.y += player.velY;
+
+    player.grounded = false;
+
+    platforms.forEach(p => {
+        if (
+            player.x < p.x + p.width &&
+            player.x + player.width > p.x &&
+            player.y < p.y + p.height &&
+            player.y + player.height > p.y
+        ) {
+            if (player.velY > 0) {
+                player.y = p.y - player.height;
+                player.velY = 0;
+                player.grounded = true;
+            }
+        }
+    });
+
+    // TOUCH TO COLLECT
+    shirts.forEach(shirt => {
+        if (!shirt.collected &&
+            player.x < shirt.x + shirt.width &&
+            player.x + player.width > shirt.x &&
+            player.y < shirt.y + shirt.height &&
+            player.y + player.height > shirt.y) {
+
+            shirt.collected = true;
+            score += 100;
+
+            if (score >= nextLifeScore) {
+                lives++;
+                nextLifeScore += 1000;
+            }
+        }
+    });
+
+    if (player.y > canvas.height) loseLife();
+
+    cameraX = player.x - 200;
+
+    generatePlatforms();
+}
+
+function loseLife() {
+    lives--;
+
+    if (lives <= 0) {
+        gameOver = true;
+        if (score > highScore) {
+            highScore = score;
+            localStorage.setItem("fjhsHighScore", highScore);
+        }
+        return;
+    }
+
+    isRespawning = true;
+    scrollSpeed = 0;
+
+    let respawnX = cameraX + 50;
+
+    let ground = platforms.find(p =>
+        respawnX > p.x && respawnX < p.x + p.width
+    );
+
+    if (!ground) ground = platforms[0];
+
+    player.x = respawnX;
+    player.y = ground.y - player.height;
+    player.velY = 0;
+
+    setTimeout(() => {
+        isRespawning = false;
+    }, 800);
+}
+
+function restartGame() {
+    score = 0;
+    lives = 3;
+    nextLifeScore = 1000;
+    scrollSpeed = baseSpeed;
+    gameOver = false;
+    isRespawning = false;
+
+    player.x = 200;
+    player.y = 300;
+    player.velY = 0;
+
+    platforms = [];
+    shirts = [];
+    createPlatform(0, 400, 2000);
+}
+
+function drawCardinal() {
+    ctx.save();
+    ctx.translate(-cameraX, 0);
+
+    let x = player.x;
+    let y = player.y;
+
+    ctx.fillStyle = "red";
+    ctx.beginPath();
+    ctx.arc(x + 30, y + 40, 30, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "white";
+    ctx.fillRect(x + 10, y + 40, 40, 30);
+
+    ctx.fillStyle = "red";
+    ctx.font = "bold 16px Arial";
+    ctx.fillText("FJHS", x + 12, y + 60);
+
+    ctx.fillStyle = "black";
+    ctx.beginPath();
+    ctx.arc(x + 45, y + 30, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "orange";
+    ctx.beginPath();
+    ctx.moveTo(x + 60, y + 40);
+    ctx.lineTo(x + 85, y + 50);
+    ctx.lineTo(x + 60, y + 60);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawPlatforms() {
+    ctx.save();
+    ctx.translate(-cameraX, 0);
+    ctx.fillStyle = "green";
+    platforms.forEach(p => ctx.fillRect(p.x, p.y, p.width, p.height));
+    ctx.restore();
+}
+
+function drawShirts() {
+    ctx.save();
+    ctx.translate(-cameraX, 0);
+
+    shirts.forEach(shirt => {
+        if (!shirt.collected) {
+            let x = shirt.x;
+            let y = shirt.y;
+
+            ctx.fillStyle = "blue";
+            ctx.beginPath();
+            ctx.moveTo(x + 10, y);
+            ctx.lineTo(x + 30, y);
+            ctx.lineTo(x + 40, y + 10);
+            ctx.lineTo(x + 35, y + 20);
+            ctx.lineTo(x + 35, y + 40);
+            ctx.lineTo(x + 5, y + 40);
+            ctx.lineTo(x + 5, y + 20);
+            ctx.lineTo(x, y + 10);
+            ctx.closePath();
+            ctx.fill();
+        }
+    });
+
+    ctx.restore();
+}
+
+function drawUI() {
+    ctx.fillStyle = "black";
+    ctx.font = "20px Arial";
+    ctx.fillText("Score: " + score, 20, 40);
+    ctx.fillText("High Score: " + highScore, 20, 70);
+    ctx.fillText("Lives: " + lives, 20, 100);
+
+    if (gameOver) {
+        ctx.font = "50px Arial";
+        ctx.fillText("GAME OVER", canvas.width/2 - 180, canvas.height/2);
+        ctx.font = "20px Arial";
+        ctx.fillText("Press Enter to Restart", canvas.width/2 - 120, canvas.height/2 + 40);
+    }
+}
+
+function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    update();
+    drawPlatforms();
+    drawShirts();
+    drawCardinal();
+    drawUI();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+</body>
+</html>
